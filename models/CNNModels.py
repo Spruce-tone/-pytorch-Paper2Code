@@ -3,6 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS, EVAL_DATALOADERS, STEP_OUTPUT
+from typing import Optional
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torch.utils.data import DataLoader, random_split
@@ -75,17 +76,23 @@ class CNNClassifier(pl.LightningModule):
 
 
 class CIFAR10DataModule(pl.LightningDataModule):
-    def __init__(self):
+    def __init__(self, num_workers=12):
+        super().__init__()
+        self.save_hyperparameters()
         # Check dataset path
         self.DATASET_PATH = './data/CIFAR10'
         if not os.path.isdir(self.DATASET_PATH):
             os.makedirs(self.DATASET_PATH, exist_ok=True)
 
-    def setup(self) -> None:
+    def prepare_data(self):
         train_data = CIFAR10(root=self.DATASET_PATH, train=True, download=True)
         self.DATA_MEAN = (train_data.data / 255.0).mean(axis=(0, 1, 2))
         self.DATA_STD = (train_data.data / 255.0).std(axis=(0, 1, 2))
 
+    # def setup(self, stage: Optional[str] = None) -> None:
+        
+    #     return super().setup(stage)
+        
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         train_transform = transforms.Compose(
             [
@@ -94,23 +101,23 @@ class CIFAR10DataModule(pl.LightningDataModule):
                 transforms.ToTensor(),
                 transforms.Normalize(self.DATA_MEAN, self.DATA_STD)
             ])
-        
         train_dataset = CIFAR10(root=self.DATASET_PATH, train=True, transform=train_transform, download=True)
         pl.seed_everything(42)
         self.train_data, _ = random_split(train_dataset, [45000, 5000])
-        self.train_loader = DataLoader(self.train_data, batch_size=64, shuffle=True, pin_memory=True)
+        self.train_loader = DataLoader(self.train_data, batch_size=64, shuffle=True, pin_memory=True, num_workers=self.hparams.num_workers)
         return self.train_loader
     
     def val_dataloader(self) -> EVAL_DATALOADERS:
         val_transform = transforms.Compose(
-            [
+            [   
+                transforms.Resize((224, 224)),
                 transforms.ToTensor(),
                 transforms.Normalize(self.DATA_MEAN, self.DATA_STD)]
         )
         val_dataset = CIFAR10(root=self.DATASET_PATH, train=True, transform=val_transform, download=True)
         pl.seed_everything(42)
         _, self.val_data = random_split(val_dataset, [45000, 5000])
-        self.val_loader = DataLoader(self.val_data, batch_size=64, shuffle=False, pin_memory=True)
+        self.val_loader = DataLoader(self.val_data, batch_size=64, shuffle=False, pin_memory=True, num_workers=self.hparams.num_workers)
         return self.val_loader
 
     def test_dataloader(self) -> EVAL_DATALOADERS:
@@ -121,10 +128,10 @@ class CIFAR10DataModule(pl.LightningDataModule):
         )
 
         self.test_data = CIFAR10(root=self.DATASET_PATH, train=False, transforms=test_transform, download=True)
-        self.test_loader = DataLoader(self.test_data, batch_size=64, shuffle=False, pin_memory=True)
+        self.test_loader = DataLoader(self.test_data, batch_size=64, shuffle=False, pin_memory=True, num_workers=self.hparams.num_workers)
         return self.test_loader
 
-def train_model(model_name, CHECKPOINT_PATH, save_name=None, **kwargs):
+def train_model(model_name, CHECKPOINT_PATH, save_name=None):
     """
     Inputs:
         model_name - Name of the model you want to run. Is used to look up the class in "model_dict"
